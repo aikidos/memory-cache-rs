@@ -1,0 +1,8 @@
+[package]
+name = "memory-cache-rs"
+version = "0.1.0"
+authors = ["aikidos <www.aikidos@gmail.com>"]
+license = "MIT"
+
+[lib]
+name = "memory_cache"
