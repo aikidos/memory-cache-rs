@@ -2,6 +2,13 @@
 name = "memory-cache-rs"
 version = "0.1.0"
 authors = ["aikidos <www.aikidos@gmail.com>"]
+description = "Simple local in-memory cache for Rust"
+homepage = "https://github.com/aikidos/memory-cache-rs"
+documentation = "https://docs.rs/memory-cache-rs/"
+repository = "https://github.com/aikidos/memory-cache-rs"
+keywords = ["cache", "memory"]
+categories = ["memory-management"]
+readme = "README.md"
 license = "MIT"
 
 [lib]
