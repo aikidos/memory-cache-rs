@@ -59,7 +59,9 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// assert!(cache.has_key(&key));
     /// ```
     pub fn has_key(&self, key: &A) -> bool {
-        self.table.get(key).filter(|e| !e.is_expired()).is_some()
+        let now = SystemTime::now();
+
+        self.table.get(key).filter(|e| !e.is_expired(now)).is_some()
     }
 
     /// Gets the value associated with the specified key.
@@ -81,9 +83,11 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// assert_eq!(cache.get(&key), Some(&value));
     /// ```
     pub fn get(&self, key: &A) -> Option<&B> {
+        let now = SystemTime::now();
+
         self.table
             .get(&key)
-            .filter(|e| !e.is_expired())
+            .filter(|e| !e.is_expired(now))
             .map(|entry| entry.value.borrow())
     }
 
@@ -173,7 +177,7 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
         let now = SystemTime::now();
 
         if now.duration_since(self.last_scan_time).unwrap() >= self.expiration_scan_frequency {
-            self.table.retain(|_, entry| !entry.is_expired());
+            self.table.retain(|_, entry| !entry.is_expired(now));
             self.last_scan_time = now;
         }
     }
