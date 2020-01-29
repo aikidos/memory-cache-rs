@@ -56,8 +56,9 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// let mut cache = MemoryCache::new(scan_frequency);
     ///
     /// let key: &'static str = "key";
+    /// let value: &'static str = "Hello, World!";
     ///
-    /// cache.set(key, "Hello, World!", None);
+    /// cache.set(key, value, None);
     ///
     /// assert!(cache.has_key(&key));
     /// ```
@@ -197,10 +198,11 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// let mut cache = MemoryCache::new(scan_frequency);
     ///
     /// let key: &'static str = "key";
+    /// let value: &'static str = "Hello, World!";
     ///
-    /// cache.set(key, "Hello, World!", None);
+    /// cache.set(key, value, None);
     ///
-    /// assert!(cache.has_key(&key));
+    /// assert_eq!(cache.get(&key), Some(&value));
     /// ```
     pub fn set(&mut self, key: A, value: B, duration: Option<Duration>) {
         let now = SystemTime::now();
@@ -319,5 +321,20 @@ mod tests {
 
         // Assert
         assert_eq!(value, None);
+    }
+
+    #[test]
+    fn update_last_scan_time() {
+        // Arrange
+        let scan_frequency = Duration::default();
+        let mut cache = MemoryCache::new(scan_frequency);
+        let key: &'static str = "key";
+
+        // Act
+        cache.set(key, 1, None);
+        let last_scan_time = cache.get_last_scan_time();
+
+        // Assert
+        assert!(last_scan_time.is_some())
     }
 }
