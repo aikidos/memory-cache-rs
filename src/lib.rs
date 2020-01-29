@@ -10,8 +10,9 @@ use std::time::{Duration, SystemTime};
 /// Represents a local in-memory cache.
 pub struct MemoryCache<A, B> {
     table: HashMap<A, CacheEntry<B>>,
-    expiration_scan_frequency: Duration,
-    last_scan_time: SystemTime,
+    full_scan_frequency: Duration,
+    created_time: SystemTime,
+    last_scan_time: Option<SystemTime>,
 }
 
 impl<A: Hash + Eq, B> MemoryCache<A, B> {
@@ -34,11 +35,12 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     ///
     /// assert_eq!(cached_value, Some(&value));
     /// ```
-    pub fn new(expiration_scan_frequency: Duration) -> MemoryCache<A, B> {
+    pub fn new(full_scan_frequency: Duration) -> MemoryCache<A, B> {
         MemoryCache::<A, B> {
             table: HashMap::<A, CacheEntry<B>>::new(),
-            expiration_scan_frequency,
-            last_scan_time: SystemTime::now(),
+            full_scan_frequency,
+            created_time: SystemTime::now(),
+            last_scan_time: None,
         }
     }
 
@@ -66,6 +68,52 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
             .get(key)
             .filter(|cache_entry| !cache_entry.is_expired(now))
             .is_some()
+    }
+
+    /// Gets the last scan time.
+    ///
+    /// - [`None`] If there were no scans.
+    ///
+    /// # Example
+    /// ```
+    /// use memory_cache::MemoryCache;
+    /// use std::time::{Duration, SystemTime};
+    ///
+    /// let scan_frequency = Duration::from_secs(60);
+    ///
+    /// let mut cache = MemoryCache::new(scan_frequency);
+    ///
+    /// let key: &'static str = "key";
+    /// let value: &'static str = "Hello, World!";
+    ///
+    /// cache.set(key, value, None);
+    ///
+    /// assert_eq!(cache.get_last_scan_time(), None);
+    /// ```
+    pub fn get_last_scan_time(&self) -> Option<&SystemTime> {
+        self.last_scan_time.as_ref()
+    }
+
+    /// Gets the full scan frequency.
+    ///
+    /// # Example
+    /// ```
+    /// use memory_cache::MemoryCache;
+    /// use std::time::{Duration, SystemTime};
+    ///
+    /// let scan_frequency = Duration::from_secs(60);
+    ///
+    /// let mut cache = MemoryCache::new(scan_frequency);
+    ///
+    /// let key: &'static str = "key";
+    /// let value: &'static str = "Hello, World!";
+    ///
+    /// cache.set(key, value, None);
+    ///
+    /// assert_eq!(cache.get_full_scan_frequency(), &scan_frequency);
+    /// ```
+    pub fn get_full_scan_frequency(&self) -> &Duration {
+        self.full_scan_frequency.borrow()
     }
 
     /// Gets the value associated with the specified key.
@@ -119,7 +167,7 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     {
         let now = SystemTime::now();
 
-        self.try_scan_expired_items(now);
+        self.try_full_scan_expired_items(now);
 
         match self.table.entry(key) {
             Entry::Occupied(mut entry) => {
@@ -157,7 +205,7 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     pub fn set(&mut self, key: A, value: B, duration: Option<Duration>) {
         let now = SystemTime::now();
 
-        self.try_scan_expired_items(now);
+        self.try_full_scan_expired_items(now);
 
         let cache_entry = CacheEntry::new(value, duration);
         self.table.insert(key, cache_entry);
@@ -186,7 +234,7 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     pub fn remove(&mut self, key: &A) -> Option<B> {
         let now = SystemTime::now();
 
-        self.try_scan_expired_items(now);
+        self.try_full_scan_expired_items(now);
 
         self.table
             .remove(key)
@@ -194,14 +242,17 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
             .map(|cache_entry| cache_entry.value)
     }
 
-    fn try_scan_expired_items(&mut self, current_time: SystemTime) {
-        if current_time.duration_since(self.last_scan_time).unwrap()
-            >= self.expiration_scan_frequency
-        {
+    fn try_full_scan_expired_items(&mut self, current_time: SystemTime) {
+        let since = match self.last_scan_time {
+            Some(last_scan_time) => current_time.duration_since(last_scan_time).unwrap(),
+            None => current_time.duration_since(self.created_time).unwrap(),
+        };
+
+        if since >= self.full_scan_frequency {
             self.table
                 .retain(|_, cache_entry| !cache_entry.is_expired(current_time));
 
-            self.last_scan_time = current_time;
+            self.last_scan_time = Some(current_time);
         }
     }
 }

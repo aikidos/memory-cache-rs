@@ -22,7 +22,7 @@ impl<B> CacheEntry<B> {
     pub(crate) fn is_expired(&self, current_time: SystemTime) -> bool {
         match self.expiration {
             Some(time) => current_time >= time,
-            _ => false,
+            None => false,
         }
     }
 }
