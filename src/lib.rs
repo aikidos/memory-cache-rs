@@ -2,6 +2,7 @@ mod entry;
 
 use crate::entry::*;
 use std::borrow::Borrow;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::time::{Duration, SystemTime};
@@ -61,7 +62,10 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     pub fn has_key(&self, key: &A) -> bool {
         let now = SystemTime::now();
 
-        self.table.get(key).filter(|e| !e.is_expired(now)).is_some()
+        self.table
+            .get(key)
+            .filter(|cache_entry| !cache_entry.is_expired(now))
+            .is_some()
     }
 
     /// Gets the value associated with the specified key.
@@ -87,8 +91,8 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
 
         self.table
             .get(&key)
-            .filter(|e| !e.is_expired(now))
-            .map(|entry| entry.value.borrow())
+            .filter(|cache_entry| !cache_entry.is_expired(now))
+            .map(|cache_entry| cache_entry.value.borrow())
     }
 
     /// Gets the value associated with the specified key, or if the key can not be found,
@@ -113,13 +117,24 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     where
         F: Fn() -> B,
     {
-        self.remove_expired_items();
+        let now = SystemTime::now();
 
-        self.table
-            .entry(key)
-            .or_insert_with(|| CacheEntry::new(factory(), duration))
-            .value
-            .borrow()
+        self.try_scan_expired_items(now);
+
+        match self.table.entry(key) {
+            Entry::Occupied(mut entry) => {
+                if entry.get().is_expired(now) {
+                    let cache_entry = CacheEntry::new(factory(), duration);
+                    entry.insert(cache_entry);
+                }
+
+                entry.into_mut().value.borrow()
+            }
+            Entry::Vacant(entry) => {
+                let cache_entry = CacheEntry::new(factory(), duration);
+                entry.insert(cache_entry).value.borrow()
+            }
+        }
     }
 
     /// Inserts a cache entry into the cache by using a key and a value.
@@ -140,11 +155,12 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// assert!(cache.has_key(&key));
     /// ```
     pub fn set(&mut self, key: A, value: B, duration: Option<Duration>) {
-        self.remove_expired_items();
+        let now = SystemTime::now();
 
-        let entry = CacheEntry::new(value, duration);
+        self.try_scan_expired_items(now);
 
-        self.table.insert(key, entry);
+        let cache_entry = CacheEntry::new(value, duration);
+        self.table.insert(key, cache_entry);
     }
 
     /// Removes a cache entry from the cache, returning the value at the key if the key
@@ -168,17 +184,24 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// assert!(!cache.has_key(&key));
     /// ```
     pub fn remove(&mut self, key: &A) -> Option<B> {
-        self.remove_expired_items();
-
-        self.table.remove(key).map(|e| e.value)
-    }
-
-    fn remove_expired_items(&mut self) {
         let now = SystemTime::now();
 
-        if now.duration_since(self.last_scan_time).unwrap() >= self.expiration_scan_frequency {
-            self.table.retain(|_, entry| !entry.is_expired(now));
-            self.last_scan_time = now;
+        self.try_scan_expired_items(now);
+
+        self.table
+            .remove(key)
+            .filter(|cache_entry| !cache_entry.is_expired(now))
+            .map(|cache_entry| cache_entry.value)
+    }
+
+    fn try_scan_expired_items(&mut self, current_time: SystemTime) {
+        if current_time.duration_since(self.last_scan_time).unwrap()
+            >= self.expiration_scan_frequency
+        {
+            self.table
+                .retain(|_, cache_entry| !cache_entry.is_expired(current_time));
+
+            self.last_scan_time = current_time;
         }
     }
 }
@@ -190,8 +213,8 @@ mod tests {
     #[test]
     fn has_key_with_expired_entry() {
         // Arrange
-        let zero_duration = Duration::default();
-        let mut cache = MemoryCache::new(zero_duration);
+        let scan_frequency = Duration::from_secs(60);
+        let mut cache = MemoryCache::new(scan_frequency);
         let key: &'static str = "key";
 
         // Act
@@ -205,8 +228,8 @@ mod tests {
     #[test]
     fn get_with_expired_entry() {
         // Arrange
-        let zero_duration = Duration::default();
-        let mut cache = MemoryCache::new(zero_duration);
+        let scan_frequency = Duration::from_secs(60);
+        let mut cache = MemoryCache::new(scan_frequency);
         let key: &'static str = "key";
 
         // Act
@@ -218,10 +241,10 @@ mod tests {
     }
 
     #[test]
-    fn get_or_create_with_expired_entry() {
+    fn get_or_set_with_expired_entry() {
         // Arrange
-        let zero_duration = Duration::default();
-        let mut cache = MemoryCache::new(zero_duration);
+        let scan_frequency = Duration::from_secs(60);
+        let mut cache = MemoryCache::new(scan_frequency);
         let key: &'static str = "key";
 
         // Act
@@ -235,8 +258,8 @@ mod tests {
     #[test]
     fn remove_with_expired_entry() {
         // Arrange
-        let zero_duration = Duration::default();
-        let mut cache = MemoryCache::new(zero_duration);
+        let scan_frequency = Duration::from_secs(60);
+        let mut cache = MemoryCache::new(scan_frequency);
         let key: &'static str = "key";
 
         // Act

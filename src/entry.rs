@@ -7,7 +7,7 @@ pub(crate) struct CacheEntry<B> {
 
     /// Expiration time.  
     /// `None` - if the value must be kept forever.
-    pub(crate) expiration: Option<SystemTime>,
+    expiration: Option<SystemTime>,
 }
 
 impl<B> CacheEntry<B> {
