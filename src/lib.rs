@@ -1,7 +1,6 @@
 mod entry;
 
 use crate::entry::*;
-use std::borrow::Borrow;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -9,7 +8,7 @@ use std::time::{Duration, SystemTime};
 
 /// Represents a local in-memory cache.
 pub struct MemoryCache<A, B> {
-    table: HashMap<A, CacheEntry<B>>,
+    cache_table: HashMap<A, CacheEntry<B>>,
     full_scan_frequency: Duration,
     created_time: SystemTime,
     last_scan_time: Option<SystemTime>,
@@ -35,9 +34,9 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     ///
     /// assert_eq!(cached_value, Some(&value));
     /// ```
-    pub fn new(full_scan_frequency: Duration) -> MemoryCache<A, B> {
-        MemoryCache::<A, B> {
-            table: HashMap::<A, CacheEntry<B>>::new(),
+    pub fn new(full_scan_frequency: Duration) -> Self {
+        Self {
+            cache_table: HashMap::new(),
             full_scan_frequency,
             created_time: SystemTime::now(),
             last_scan_time: None,
@@ -65,7 +64,7 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     pub fn has_key(&self, key: &A) -> bool {
         let now = SystemTime::now();
 
-        self.table
+        self.cache_table
             .get(key)
             .filter(|cache_entry| !cache_entry.is_expired(now))
             .is_some()
@@ -91,8 +90,8 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     ///
     /// assert_eq!(cache.get_last_scan_time(), None);
     /// ```
-    pub fn get_last_scan_time(&self) -> Option<&SystemTime> {
-        self.last_scan_time.as_ref()
+    pub fn get_last_scan_time(&self) -> Option<SystemTime> {
+        self.last_scan_time
     }
 
     /// Gets the full scan frequency.
@@ -114,7 +113,7 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// assert_eq!(cache.get_full_scan_frequency(), &scan_frequency);
     /// ```
     pub fn get_full_scan_frequency(&self) -> &Duration {
-        self.full_scan_frequency.borrow()
+        &self.full_scan_frequency
     }
 
     /// Gets the value associated with the specified key.
@@ -138,10 +137,10 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     pub fn get(&self, key: &A) -> Option<&B> {
         let now = SystemTime::now();
 
-        self.table
+        self.cache_table
             .get(&key)
             .filter(|cache_entry| !cache_entry.is_expired(now))
-            .map(|cache_entry| cache_entry.value.borrow())
+            .map(|cache_entry| &cache_entry.value)
     }
 
     /// Gets the value associated with the specified key, or if the key can not be found,
@@ -170,19 +169,15 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
 
         self.try_full_scan_expired_items(now);
 
-        match self.table.entry(key) {
-            Entry::Occupied(mut entry) => {
-                if entry.get().is_expired(now) {
-                    let cache_entry = CacheEntry::new(factory(), duration);
-                    entry.insert(cache_entry);
+        match self.cache_table.entry(key) {
+            Entry::Occupied(mut occupied) => {
+                if occupied.get().is_expired(now) {
+                    occupied.insert(CacheEntry::new(factory(), duration));
                 }
 
-                entry.into_mut().value.borrow()
+                &occupied.into_mut().value
             }
-            Entry::Vacant(entry) => {
-                let cache_entry = CacheEntry::new(factory(), duration);
-                entry.insert(cache_entry).value.borrow()
-            }
+            Entry::Vacant(vacant) => &vacant.insert(CacheEntry::new(factory(), duration)).value,
         }
     }
 
@@ -209,8 +204,8 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
 
         self.try_full_scan_expired_items(now);
 
-        let cache_entry = CacheEntry::new(value, duration);
-        self.table.insert(key, cache_entry);
+        self.cache_table
+            .insert(key, CacheEntry::new(value, duration));
     }
 
     /// Removes a cache entry from the cache, returning the value at the key if the key
@@ -238,20 +233,19 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
 
         self.try_full_scan_expired_items(now);
 
-        self.table
+        self.cache_table
             .remove(key)
             .filter(|cache_entry| !cache_entry.is_expired(now))
             .map(|cache_entry| cache_entry.value)
     }
 
     fn try_full_scan_expired_items(&mut self, current_time: SystemTime) {
-        let since = match self.last_scan_time {
-            Some(last_scan_time) => current_time.duration_since(last_scan_time).unwrap(),
-            None => current_time.duration_since(self.created_time).unwrap(),
-        };
+        let since = current_time
+            .duration_since(self.last_scan_time.unwrap_or(self.created_time))
+            .unwrap();
 
         if since >= self.full_scan_frequency {
-            self.table
+            self.cache_table
                 .retain(|_, cache_entry| !cache_entry.is_expired(current_time));
 
             self.last_scan_time = Some(current_time);
@@ -264,7 +258,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn has_key_with_expired_entry() {
+    fn has_key_expired_entry() {
         // Arrange
         let scan_frequency = Duration::from_secs(60);
         let mut cache = MemoryCache::new(scan_frequency);
@@ -272,14 +266,13 @@ mod tests {
 
         // Act
         cache.set(key, 1, Some(Duration::default()));
-        let has_key = cache.has_key(&key);
 
         // Assert
-        assert!(!has_key);
+        assert!(!cache.has_key(&key));
     }
 
     #[test]
-    fn get_with_expired_entry() {
+    fn get_expired_entry() {
         // Arrange
         let scan_frequency = Duration::from_secs(60);
         let mut cache = MemoryCache::new(scan_frequency);
@@ -287,14 +280,13 @@ mod tests {
 
         // Act
         cache.set(key, 1, Some(Duration::default()));
-        let value = cache.get(&key);
 
         // Assert
-        assert_eq!(value, None);
+        assert_eq!(cache.get(&key), None);
     }
 
     #[test]
-    fn get_or_set_with_expired_entry() {
+    fn get_or_set_expired_entry() {
         // Arrange
         let scan_frequency = Duration::from_secs(60);
         let mut cache = MemoryCache::new(scan_frequency);
@@ -309,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_with_expired_entry() {
+    fn remove_expired_entry() {
         // Arrange
         let scan_frequency = Duration::from_secs(60);
         let mut cache = MemoryCache::new(scan_frequency);

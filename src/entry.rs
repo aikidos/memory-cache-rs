@@ -8,23 +8,21 @@ pub(crate) struct CacheEntry<B> {
     /// Expiration time.
     ///
     /// - [`None`] if the value must be kept forever.
-    expiration: Option<SystemTime>,
+    expiration_time: Option<SystemTime>,
 }
 
 impl<B> CacheEntry<B> {
     pub(crate) fn new(value: B, duration: Option<Duration>) -> Self {
-        CacheEntry {
-            expiration: duration.map(|d| SystemTime::now() + d),
+        Self {
+            expiration_time: duration.map(|dur| SystemTime::now() + dur),
             value,
         }
     }
 
     /// Check if a entry is expired.
     pub(crate) fn is_expired(&self, current_time: SystemTime) -> bool {
-        match self.expiration {
-            Some(time) => current_time >= time,
-            None => false,
-        }
+        self.expiration_time
+            .map_or(false, |time| current_time >= time)
     }
 }
 
