@@ -181,7 +181,10 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
         }
     }
 
-    /// Inserts a cache entry into the cache by using a key and a value.
+    /// Inserts a key-value pair into the cache.
+    ///
+    /// If the cache did not have this key present, `None` is returned.  
+    /// If the cache did have this key present, the value is updated, and the old value is returned.
     ///
     /// # Example
     /// ```
@@ -199,17 +202,18 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     ///
     /// assert_eq!(cache.get(&key), Some(&value));
     /// ```
-    pub fn set(&mut self, key: A, value: B, duration: Option<Duration>) {
+    pub fn set(&mut self, key: A, value: B, duration: Option<Duration>) -> Option<B> {
         let now = SystemTime::now();
 
         self.try_full_scan_expired_items(now);
 
         self.cache_table
-            .insert(key, CacheEntry::new(value, duration));
+            .insert(key, CacheEntry::new(value, duration))
+            .filter(|cache_entry| !cache_entry.is_expired(now))
+            .map(|cache_entry| cache_entry.value)
     }
 
-    /// Removes a cache entry from the cache, returning the value at the key if the key
-    /// was previously in the cache.
+    /// Removes a key from the cache, returning the value at the key if the key was previously in the cache.
     ///
     /// # Example
     /// ```
@@ -283,6 +287,24 @@ mod tests {
 
         // Assert
         assert_eq!(cache.get(&key), None);
+    }
+
+    #[test]
+    fn set_return_old_value() {
+        // Arrange
+        let scan_frequency = Duration::from_secs(60);
+        let mut cache = MemoryCache::new(scan_frequency);
+        let key: &'static str = "key";
+
+        // Act
+        let result_1 = cache.set(key, 1, Some(Duration::default()));
+        let result_2 = cache.set(key, 2, None);
+        let result_3 = cache.set(key, 3, None);
+
+        // Assert
+        assert_eq!(result_1, None);
+        assert_eq!(result_2, None);
+        assert_eq!(result_3, Some(2));
     }
 
     #[test]
