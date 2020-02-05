@@ -1,4 +1,7 @@
+extern crate once_cell;
+
 mod entry;
+pub mod macros;
 
 use crate::entry::*;
 use std::collections::hash_map::Entry;
@@ -9,7 +12,7 @@ use std::time::{Duration, SystemTime};
 /// Represents a local in-memory cache.
 pub struct MemoryCache<A, B> {
     cache_table: HashMap<A, CacheEntry<B>>,
-    full_scan_frequency: Duration,
+    full_scan_frequency: Option<Duration>,
     created_time: SystemTime,
     last_scan_time: Option<SystemTime>,
 }
@@ -22,22 +25,46 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// use memory_cache::MemoryCache;
     /// use std::time::Duration;
     ///
-    /// let scan_frequency = Duration::from_secs(60);
-    ///
-    /// let mut cache = MemoryCache::new(scan_frequency);
+    /// let mut cache = MemoryCache::new();
     ///
     /// let key: &'static str = "key";
     /// let value: &'static str = "Hello, World!";
     ///
-    /// cache.set(key, value, None);
-    /// let cached_value = cache.get(&key);
+    /// cache.insert(key, value, None);
     ///
-    /// assert_eq!(cached_value, Some(&value));
+    /// assert_eq!(cache.get(&key), Some(&value));
     /// ```
-    pub fn new(full_scan_frequency: Duration) -> Self {
+    pub fn new() -> Self {
         Self {
             cache_table: HashMap::new(),
-            full_scan_frequency,
+            full_scan_frequency: None,
+            created_time: SystemTime::now(),
+            last_scan_time: None,
+        }
+    }
+
+    /// Creates an empty `MemoryCache` with periodic full scan to identify expired keys.
+    ///
+    /// # Example
+    /// ```
+    /// use memory_cache::MemoryCache;
+    /// use std::time::Duration;
+    ///
+    /// let scan_frequency = Duration::from_secs(60);
+    ///
+    /// let mut cache = MemoryCache::with_full_scan(scan_frequency);
+    ///
+    /// let key: &'static str = "key";
+    /// let value: &'static str = "Hello, World!";
+    ///
+    /// cache.insert(key, value, None);
+    ///
+    /// assert_eq!(cache.get(&key), Some(&value));
+    /// ```
+    pub fn with_full_scan(full_scan_frequency: Duration) -> Self {
+        Self {
+            cache_table: HashMap::new(),
+            full_scan_frequency: Some(full_scan_frequency),
             created_time: SystemTime::now(),
             last_scan_time: None,
         }
@@ -50,18 +77,16 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// use memory_cache::MemoryCache;
     /// use std::time::Duration;
     ///
-    /// let scan_frequency = Duration::from_secs(60);
-    ///
-    /// let mut cache = MemoryCache::new(scan_frequency);
+    /// let mut cache = MemoryCache::new();
     ///
     /// let key: &'static str = "key";
     /// let value: &'static str = "Hello, World!";
     ///
-    /// cache.set(key, value, None);
+    /// cache.insert(key, value, None);
     ///
-    /// assert!(cache.has_key(&key));
+    /// assert!(cache.contains_key(&key));
     /// ```
-    pub fn has_key(&self, key: &A) -> bool {
+    pub fn contains_key(&self, key: &A) -> bool {
         let now = SystemTime::now();
 
         self.cache_table
@@ -79,14 +104,12 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// use memory_cache::MemoryCache;
     /// use std::time::{Duration, SystemTime};
     ///
-    /// let scan_frequency = Duration::from_secs(60);
-    ///
-    /// let mut cache = MemoryCache::new(scan_frequency);
+    /// let mut cache = MemoryCache::new();
     ///
     /// let key: &'static str = "key";
     /// let value: &'static str = "Hello, World!";
     ///
-    /// cache.set(key, value, None);
+    /// cache.insert(key, value, None);
     ///
     /// assert_eq!(cache.get_last_scan_time(), None);
     /// ```
@@ -103,17 +126,17 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     ///
     /// let scan_frequency = Duration::from_secs(60);
     ///
-    /// let mut cache = MemoryCache::new(scan_frequency);
+    /// let mut cache = MemoryCache::with_full_scan(scan_frequency);
     ///
     /// let key: &'static str = "key";
     /// let value: &'static str = "Hello, World!";
     ///
-    /// cache.set(key, value, None);
+    /// cache.insert(key, value, None);
     ///
-    /// assert_eq!(cache.get_full_scan_frequency(), &scan_frequency);
+    /// assert_eq!(cache.get_full_scan_frequency(), Some(scan_frequency));
     /// ```
-    pub fn get_full_scan_frequency(&self) -> &Duration {
-        &self.full_scan_frequency
+    pub fn get_full_scan_frequency(&self) -> Option<Duration> {
+        self.full_scan_frequency
     }
 
     /// Gets the value associated with the specified key.
@@ -123,14 +146,12 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// use memory_cache::MemoryCache;
     /// use std::time::Duration;
     ///
-    /// let scan_frequency = Duration::from_secs(60);
-    ///
-    /// let mut cache = MemoryCache::new(scan_frequency);
+    /// let mut cache = MemoryCache::new();
     ///
     /// let key: &'static str = "key";
     /// let value: &'static str = "Hello, World!";
     ///
-    /// cache.set(key, value, None);
+    /// cache.insert(key, value, None);
     ///
     /// assert_eq!(cache.get(&key), Some(&value));
     /// ```
@@ -151,17 +172,15 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// use memory_cache::MemoryCache;
     /// use std::time::Duration;
     ///
-    /// let scan_frequency = Duration::from_secs(60);
-    ///
-    /// let mut cache = MemoryCache::new(scan_frequency);
+    /// let mut cache = MemoryCache::new();
     ///
     /// let key: &'static str = "key";
     /// let value: &'static str = "Hello, World!";
     ///
-    /// assert_eq!(cache.get_or_set(key, move || value, None), &value);
-    /// assert!(cache.has_key(&key));
+    /// assert_eq!(cache.get_or_insert(key, move || value, None), &value);
+    /// assert!(cache.contains_key(&key));
     /// ```
-    pub fn get_or_set<F>(&mut self, key: A, factory: F, duration: Option<Duration>) -> &B
+    pub fn get_or_insert<F>(&mut self, key: A, factory: F, lifetime: Option<Duration>) -> &B
     where
         F: Fn() -> B,
     {
@@ -172,12 +191,12 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
         match self.cache_table.entry(key) {
             Entry::Occupied(mut occupied) => {
                 if occupied.get().is_expired(now) {
-                    occupied.insert(CacheEntry::new(factory(), duration));
+                    occupied.insert(CacheEntry::new(factory(), lifetime));
                 }
 
                 &occupied.into_mut().value
             }
-            Entry::Vacant(vacant) => &vacant.insert(CacheEntry::new(factory(), duration)).value,
+            Entry::Vacant(vacant) => &vacant.insert(CacheEntry::new(factory(), lifetime)).value,
         }
     }
 
@@ -191,24 +210,22 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// use memory_cache::MemoryCache;
     /// use std::time::Duration;
     ///
-    /// let scan_frequency = Duration::from_secs(60);
-    ///
-    /// let mut cache = MemoryCache::new(scan_frequency);
+    /// let mut cache = MemoryCache::new();
     ///
     /// let key: &'static str = "key";
     /// let value: &'static str = "Hello, World!";
     ///
-    /// cache.set(key, value, None);
+    /// cache.insert(key, value, None);
     ///
     /// assert_eq!(cache.get(&key), Some(&value));
     /// ```
-    pub fn set(&mut self, key: A, value: B, duration: Option<Duration>) -> Option<B> {
+    pub fn insert(&mut self, key: A, value: B, lifetime: Option<Duration>) -> Option<B> {
         let now = SystemTime::now();
 
         self.try_full_scan_expired_items(now);
 
         self.cache_table
-            .insert(key, CacheEntry::new(value, duration))
+            .insert(key, CacheEntry::new(value, lifetime))
             .filter(|cache_entry| !cache_entry.is_expired(now))
             .map(|cache_entry| cache_entry.value)
     }
@@ -220,17 +237,15 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     /// use memory_cache::MemoryCache;
     /// use std::time::Duration;
     ///
-    /// let scan_frequency = Duration::from_secs(60);
-    ///
-    /// let mut cache = MemoryCache::new(scan_frequency);
+    /// let mut cache = MemoryCache::new();
     ///
     /// let key: &'static str = "key";
     /// let value: &'static str = "Hello, World!";
     ///
-    /// cache.set(key, value, None);
+    /// cache.insert(key, value, None);
     ///
     /// assert_eq!(cache.remove(&key), Some(value));
-    /// assert!(!cache.has_key(&key));
+    /// assert!(!cache.contains_key(&key));
     /// ```
     pub fn remove(&mut self, key: &A) -> Option<B> {
         let now = SystemTime::now();
@@ -244,15 +259,17 @@ impl<A: Hash + Eq, B> MemoryCache<A, B> {
     }
 
     fn try_full_scan_expired_items(&mut self, current_time: SystemTime) {
-        let since = current_time
-            .duration_since(self.last_scan_time.unwrap_or(self.created_time))
-            .unwrap();
+        if let Some(full_scan_frequency) = self.full_scan_frequency {
+            let since = current_time
+                .duration_since(self.last_scan_time.unwrap_or(self.created_time))
+                .unwrap();
 
-        if since >= self.full_scan_frequency {
-            self.cache_table
-                .retain(|_, cache_entry| !cache_entry.is_expired(current_time));
+            if since >= full_scan_frequency {
+                self.cache_table
+                    .retain(|_, cache_entry| !cache_entry.is_expired(current_time));
 
-            self.last_scan_time = Some(current_time);
+                self.last_scan_time = Some(current_time);
+            }
         }
     }
 }
@@ -262,44 +279,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn has_key_expired_entry() {
+    fn contains_key_expired_entry() {
         // Arrange
-        let scan_frequency = Duration::from_secs(60);
-        let mut cache = MemoryCache::new(scan_frequency);
+        let mut cache = MemoryCache::new();
         let key: &'static str = "key";
 
         // Act
-        cache.set(key, 1, Some(Duration::default()));
+        cache.insert(key, 1, Some(Duration::default()));
 
         // Assert
-        assert!(!cache.has_key(&key));
+        assert!(!cache.contains_key(&key));
     }
 
     #[test]
     fn get_expired_entry() {
         // Arrange
-        let scan_frequency = Duration::from_secs(60);
-        let mut cache = MemoryCache::new(scan_frequency);
+        let mut cache = MemoryCache::new();
         let key: &'static str = "key";
 
         // Act
-        cache.set(key, 1, Some(Duration::default()));
+        cache.insert(key, 1, Some(Duration::default()));
 
         // Assert
         assert_eq!(cache.get(&key), None);
     }
 
     #[test]
-    fn set_return_old_value() {
+    fn insert_return_old_value() {
         // Arrange
-        let scan_frequency = Duration::from_secs(60);
-        let mut cache = MemoryCache::new(scan_frequency);
+        let mut cache = MemoryCache::new();
         let key: &'static str = "key";
 
         // Act
-        let result_1 = cache.set(key, 1, Some(Duration::default()));
-        let result_2 = cache.set(key, 2, None);
-        let result_3 = cache.set(key, 3, None);
+        let result_1 = cache.insert(key, 1, Some(Duration::default()));
+        let result_2 = cache.insert(key, 2, None);
+        let result_3 = cache.insert(key, 3, None);
 
         // Assert
         assert_eq!(result_1, None);
@@ -308,15 +322,14 @@ mod tests {
     }
 
     #[test]
-    fn get_or_set_expired_entry() {
+    fn get_or_insert_expired_entry() {
         // Arrange
-        let scan_frequency = Duration::from_secs(60);
-        let mut cache = MemoryCache::new(scan_frequency);
+        let mut cache = MemoryCache::new();
         let key: &'static str = "key";
 
         // Act
-        cache.get_or_set(key, || 1, Some(Duration::default()));
-        let value = cache.get_or_set(key, || 2, None);
+        cache.get_or_insert(key, || 1, Some(Duration::default()));
+        let value = cache.get_or_insert(key, || 2, None);
 
         // Assert
         assert_eq!(value, &2);
@@ -325,12 +338,11 @@ mod tests {
     #[test]
     fn remove_expired_entry() {
         // Arrange
-        let scan_frequency = Duration::from_secs(60);
-        let mut cache = MemoryCache::new(scan_frequency);
+        let mut cache = MemoryCache::new();
         let key: &'static str = "key";
 
         // Act
-        cache.set(key, 1, Some(Duration::default()));
+        cache.insert(key, 1, Some(Duration::default()));
         let value = cache.remove(&key);
 
         // Assert
@@ -341,11 +353,11 @@ mod tests {
     fn update_last_scan_time() {
         // Arrange
         let scan_frequency = Duration::default();
-        let mut cache = MemoryCache::new(scan_frequency);
+        let mut cache = MemoryCache::with_full_scan(scan_frequency);
         let key: &'static str = "key";
 
         // Act
-        cache.set(key, 1, None);
+        cache.insert(key, 1, None);
         let last_scan_time = cache.get_last_scan_time();
 
         // Assert

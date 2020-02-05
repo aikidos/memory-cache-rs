@@ -12,9 +12,9 @@ pub(crate) struct CacheEntry<B> {
 }
 
 impl<B> CacheEntry<B> {
-    pub(crate) fn new(value: B, duration: Option<Duration>) -> Self {
+    pub(crate) fn new(value: B, lifetime: Option<Duration>) -> Self {
         Self {
-            expiration_time: duration.map(|dur| SystemTime::now() + dur),
+            expiration_time: lifetime.map(|dur| SystemTime::now() + dur),
             value,
         }
     }

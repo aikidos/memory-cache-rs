@@ -1,6 +1,7 @@
 [package]
 name = "memory-cache-rs"
-version = "0.1.2"
+version = "0.2.0"
+edition = "2018"
 authors = ["aikidos <www.aikidos@gmail.com>"]
 description = "Simple local in-memory cache for Rust"
 homepage = "https://github.com/aikidos/memory-cache-rs"
@@ -13,3 +14,6 @@ license = "MIT"
 
 [lib]
 name = "memory_cache"
+
+[dependencies]
+once_cell = "1.3.1"
