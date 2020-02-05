@@ -3,6 +3,11 @@
 
 Simple local in-memory cache for [Rust](https://www.rust-lang.org/).
 
+1. [Example](#example)
+1. [Memoization](#memoization)
+1. [Breaking Changes](#breaking-changes)
+1. [Licence](#licence)
+
 Example
 ---
 
