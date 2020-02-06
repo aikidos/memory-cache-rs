@@ -1,3 +1,5 @@
+![Actions Status](https://github.com/aikidos/memory-cache-rs/workflows/build/badge.svg)
+
 [memory-cache-rs](https://docs.rs/memory-cache-rs)
 ===
 
