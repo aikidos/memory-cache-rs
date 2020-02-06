@@ -1,5 +1,3 @@
-extern crate once_cell;
-
 mod entry;
 pub mod macros;
 
