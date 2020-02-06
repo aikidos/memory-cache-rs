@@ -11,6 +11,9 @@ keywords = ["cache", "memory"]
 categories = ["memory-management"]
 readme = "README.md"
 license = "MIT"
+exclude = [
+    "BREAKING.md"
+]
 
 [lib]
 name = "memory_cache"
