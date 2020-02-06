@@ -35,8 +35,10 @@ mod tests {
         // Arrange
         let now = SystemTime::now();
 
-        let entry_expired = CacheEntry::new(1, Some(Duration::from_secs(0)));
-        let entry_not_expired = CacheEntry::new(1, Some(Duration::from_secs(1)));
+        let mut entry_expired = CacheEntry::new(1, None);
+        entry_expired.expiration_time = Some(now - Duration::from_secs(5));
+
+        let entry_not_expired = CacheEntry::new(1, Some(Duration::from_secs(60)));
         let entry_none_duration = CacheEntry::new(1, None);
 
         // Act and Assert
